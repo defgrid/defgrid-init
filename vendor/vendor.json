@@ -1,6 +1,25 @@
 {
 	"comment": "",
 	"ignore": "test",
-	"package": [],
+	"package": [
+		{
+			"checksumSHA1": "Sub5+6yzZ28L2n1l+xmjg9yitvM=",
+			"path": "github.com/d2g/dhcp4",
+			"revision": "f0e4d29ff0231dce36e250b2ed9ff08412584bca",
+			"revisionTime": "2015-04-13T10:30:26Z"
+		},
+		{
+			"checksumSHA1": "UsIyJWFJ8P8K2ZhynxKem9dUDYw=",
+			"path": "github.com/d2g/dhcp4client",
+			"revision": "bed07e1bc5b85f69c6f0fd73393aa35ec68ed892",
+			"revisionTime": "2015-05-19T14:54:04Z"
+		},
+		{
+			"checksumSHA1": "vu7njn8O4vhFtmgGWntwjA2NAbk=",
+			"path": "golang.org/x/sys/unix",
+			"revision": "8f0908ab3b2457e2e15403d3697c9ef5cb4b57a9",
+			"revisionTime": "2016-09-14T20:33:16Z"
+		}
+	],
 	"rootPath": "github.com/defgrid/defgrid-init"
 }
