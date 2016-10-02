@@ -27,6 +27,12 @@
 			"revisionTime": "2015-07-01T16:42:09Z"
 		},
 		{
+			"checksumSHA1": "eIjJhEqZZmQwt++0jlQhbIhAcH4=",
+			"path": "github.com/kr/pty",
+			"revision": "ce7fa45920dc37a92de8377972e52bc55ffa8d57",
+			"revisionTime": "2016-07-16T20:46:20Z"
+		},
+		{
 			"checksumSHA1": "UrYLyYx/GF8lltxzR3F4NfuBB/U=",
 			"path": "github.com/milosgajdos83/tenus",
 			"revision": "104e65ade0fa42600476ac8786335b5e128797e4",
