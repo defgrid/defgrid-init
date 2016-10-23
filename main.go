@@ -5,8 +5,8 @@ import (
 	"net"
 	"os"
 
-	"github.com/milosgajdos83/tenus"
 	"github.com/d2g/dhcp4client"
+	"github.com/milosgajdos83/tenus"
 )
 
 func main() {
@@ -14,11 +14,25 @@ func main() {
 	// a DHCP lease and configuring the network, which will
 	// be the first thing this program does but ultimately it
 	// will do it in a more robust and organized way.
-	//
-	// In particular, this is not yet ready to be used as a real
-	// /sbin/init because it exits once it's fussed with DHCP.
+
+	// Make sure we never exit, even on panic, because if we do
+	// that we'll cause a kernel panic that will obscure our abililty
+	// to see the panic output.
+	defer func () {
+		if r := recover(); r != nil {
+			log.Printf("Recovered from %s", r)
+		}
+		log.Printf("That's all I've got, folks.")
+		for {}
+	}()
 
 	log.Printf("Arguments are %#v", os.Args)
+
+	iface, err := net.InterfaceByName("eth0")
+	if err != nil {
+		panic(err)
+	}
+	log.Printf("eth0 index is %d", iface.Index)
 
 	link, err := tenus.NewLinkFrom("eth0")
 	if err != nil {
@@ -30,14 +44,17 @@ func main() {
 
 	log.Println("requesting DHCP lease")
 
-	c, err := dhcp4client.NewInetSock(
-		dhcp4client.SetLocalAddr(
-			net.UDPAddr{IP: net.IPv4(0, 0, 0, 0), Port: 68},
-		),
-		dhcp4client.SetRemoteAddr(
-			net.UDPAddr{IP: net.IPv4bcast, Port: 67},
-		),
-	)
+	// Ignore error since we don't care if the interface is already down,
+	// and if it's some other sort of error then we'll presumably get the
+	// same error in a moment when we SetLinkUp
+	link.SetLinkDown()
+
+	err = link.SetLinkUp()
+	if err != nil {
+		panic(err)
+	}
+
+	c, err := dhcp4client.NewPacketSock(iface.Index)
 	if err != nil {
 		panic(err)
 	}
@@ -73,7 +90,7 @@ func main() {
 	routers := IPListFromDHCP(options[3])
 	nameServers := IPListFromDHCP(options[6])
 	network := net.IPNet{
-		IP: localIPAddr,
+		IP:   localIPAddr,
 		Mask: subnetMask,
 	}
 
@@ -85,22 +102,16 @@ func main() {
 
 	log.Printf("configuring eth0 (this might break SSH)")
 
-	// Ignore error since we don't care if the interface is already down,
-	// and if it's some other sort of error then we'll presumably get the
-	// same error in a moment when we SetLinkUp
-	link.SetLinkDown()
-
-	err = link.SetLinkUp()
-	if err != nil {
-		panic(err)
-	}
-
 	err = link.SetLinkIp(localIPAddr, &network)
 	if err != nil {
 		panic(err)
 	}
 
 	err = link.SetLinkDefaultGw(&routers[0])
+	if err != nil {
+		panic(err)
+	}
+
 }
 
 // IPListFromDHCP takes a slice of IPv4 addresses expressed as raw
