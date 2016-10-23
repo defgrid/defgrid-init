@@ -2,6 +2,8 @@ package main
 
 import (
 	"fmt"
+	"io"
+	"os"
 )
 
 func NewBooter(flavor string) *Booter {
@@ -14,7 +16,22 @@ func NewBooter(flavor string) *Booter {
 		// to the system, since the primary motivation is to get
 		// through the boot process with little fanfare so we can
 		// test the service-supervision part.
+
+		// Environment variables can be used to customize how we
+		// fake various aspects of the system.
+		consoleDev := os.Getenv("DGI_DEV_CONSOLE")
+		if consoleDev == "" {
+			consoleDev = "/dev/null"
+		}
+
+		logDev := os.Getenv("DGI_DEV_LOG")
+		if logDev == "" {
+			logDev = "/dev/tty"
+		}
+
 		return &Booter{
+			consoleDevPath:      consoleDev,
+			logDevPath:          logDev,
 			networkConfig:       &NetworkConfigurerLocalDev{},
 			earlyResolverConfig: &ResolverConfigurerNoOp{},
 			nodeConfigGetter:    &NodeConfigGetterLocalDev{},
@@ -44,12 +61,22 @@ func NewBooter(flavor string) *Booter {
 }
 
 type Booter struct {
+	consoleDevPath      string
+	logDevPath          string
 	networkConfig       NetworkConfigurer
 	earlyResolverConfig ResolverConfigurer
 	nodeConfigGetter    NodeConfigGetter
 	resolverConfig      ResolverConfigurer
 
 	earlyResolverActive bool
+}
+
+func (b *Booter) Console() (*Console, error) {
+	return OpenConsole(b.consoleDevPath)
+}
+
+func (b *Booter) LogWriter() (io.WriteCloser, error) {
+	return os.OpenFile(b.logDevPath, os.O_WRONLY|os.O_APPEND|os.O_CREATE, 0666)
 }
 
 func (b *Booter) ConfigureNetwork() (*NetworkConfig, error) {
