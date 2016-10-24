@@ -1,61 +1,159 @@
 package main
 
 import (
+	"errors"
+	"fmt"
 	"io"
 	"log"
-	"net"
 	"os"
-	"os/exec"
+	"runtime/debug"
 	"time"
-
-	"github.com/d2g/dhcp4client"
-	"github.com/milosgajdos83/tenus"
-	"gopkg.in/vmihailenco/msgpack.v2"
 )
 
 func main() {
-	// Right now this is just a hard-coded prototype of getting
-	// a DHCP lease and configuring the network, which will
-	// be the first thing this program does but ultimately it
-	// will do it in a more robust and organized way.
+	// Trap if we return from this function, e.g. due to a panic, and
+	// prevent the program from actually exiting so we don't panic
+	// the kernel.
+	panicHandler := PanicHandler{}
+	defer panicHandler.OnExit()
+	panicHandler.AddAction(func(err error, stack string) {
+		log.Printf("[FATAL] %s\n%s", err, stack)
+	})
 
-	// Make sure we never exit, even on panic, because if we do
-	// that we'll cause a kernel panic that will obscure our abililty
-	// to see the panic output.
-	defer func() {
-		if r := recover(); r != nil {
-			log.Printf("Recovered from %s", r)
-		}
-		log.Printf("That's all I've got, folks.")
-		for {
-			time.Sleep(60 * time.Second)
-		}
-	}()
+	booter := NewBooter(os.Args[1])
+	if booter == nil {
+		panic(fmt.Errorf("unknown flavor %q", os.Args[1]))
+	}
 
-	leaseRead, leaseWrite := io.Pipe()
-	cmd := exec.Command("/usr/lib/defgrid-init/dhcpclient", "eth0")
-	cmd.Stdout = leaseWrite
-	cmd.Stderr = os.Stderr
+	console, err := booter.Console()
+	if err != nil {
+		panic(err)
+	}
 
-	go func() {
-		err := cmd.Run()
-		if err != nil {
-			log.Printf("[ERROR] %s", err)
-			os.Exit(1)
-		}
-		os.Exit(0)
-	}()
+	logWriter, err := booter.LogWriter()
+	if err != nil {
+		panic(err)
+	}
 
-	leaseDecoder := msgpack.NewDecoder(leaseRead)
+	console.Refresh()
 
-	lease := map[string]interface{}{}
+	panicHandler.AddAction(func(err error, stack string) {
+		console.FatalError(err)
+	})
+
+	log.SetOutput(io.MultiWriter(logWriter, console.LogWriter()))
+
+	if booter == nil {
+		panic("unsupported boot flavor!")
+	}
+
+	bootStatus := func(s string) {
+		log.Println(s)
+		console.BootStatusMessage = s
+		console.Refresh()
+	}
+
+	bootStatus("Configuring network...")
+	netConfig, err := booter.ConfigureNetwork()
+	if err != nil {
+		panic(err)
+	}
+	_, subnetPrefix := netConfig.SubnetMask.Size()
+	log.Printf("Network Up: %s/%d", netConfig.IPAddress, subnetPrefix)
+
+	bootStatus("Configuring system resolver...")
+
+	err = booter.EarlyConfigureResolver(netConfig)
+	if err != nil {
+		panic(err)
+	}
+
+	bootStatus("Getting node configuration...")
+
+	nodeConfig, err := booter.GetNodeConfig(netConfig)
+	if err != nil {
+		panic(err)
+	}
+	log.Printf("Node identity: %q, in region %q", nodeConfig.Hostname, nodeConfig.RegionName)
+
+	bootStatus("Re-configuring system resolver...")
+
+	err = booter.ConfigureResolver(netConfig, nodeConfig)
+	if err != nil {
+		panic(err)
+	}
+
+	console.BootStatusMessage = ""
+	console.SystemRoleName = "Dev System"
+	console.IPAddress = netConfig.IPAddress
+	console.Hostname = nodeConfig.Hostname
+	console.RegionName = nodeConfig.RegionName
+	console.Refresh()
+
+	// TODO: Eventually this will be our main event loop, but we
+	// don't have any events right now so we'll just pause here
+	// and do nothing.
 	for {
-		err := leaseDecoder.Decode(&lease)
-		if err != nil {
-			log.Printf("[ERROR] failed to parse DHCP lease notification: %s", err)
-			continue
-		}
+		time.Sleep(3600)
+	}
+}
 
-		log.Printf("Got DHCP lease %#v", lease)
+type PanicHandler struct {
+	actions []PanicAction
+}
+
+type PanicAction func(err error, stack string)
+
+func (h *PanicHandler) AddAction(action PanicAction) {
+	h.actions = append(h.actions, action)
+}
+
+// OnExit should be called in a "defer" on the main function.
+//
+// If the main function ever exits, it will call the configured panic actions
+// and then intentionally hang the program forever, thus preventing it from
+// exiting.
+//
+// If we are exiting due to a panic, the panic error will be passed to the
+// actions. Otherwise, the error will merely be that the program exited.
+//
+// Needless to say, we should only get in here if something has gone very
+// wrong that prevents us from booting or continuing to operate the system.
+// Wherever possible we should retry things and attempt to keep the system
+// running.
+func (h *PanicHandler) OnExit() {
+	var err error
+	var trace string
+	if p := recover(); p != nil {
+		trace = string(debug.Stack())
+
+		switch tErr := p.(type) {
+		case error:
+			err = tErr
+		case string:
+			err = errors.New(tErr)
+		case fmt.Stringer:
+			err = errors.New(tErr.String())
+		default:
+			err = fmt.Errorf("panic: %#v", tErr)
+		}
+	} else {
+		err = fmt.Errorf("main function exited")
+	}
+
+	actions := h.actions
+	if actions == nil || len(actions) == 0 {
+		// Default action if we're so early that we don't have any
+		// actions yet.
+		fmt.Fprintf(os.Stderr, "[FATAL] %s\n%s\n", err, trace)
+	} else {
+		for _, action := range actions {
+			action(err, trace)
+		}
+	}
+
+	// Hang out here forever
+	for {
+		time.Sleep(3600)
 	}
 }
