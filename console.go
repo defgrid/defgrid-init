@@ -45,6 +45,10 @@ type Console struct {
 	RegionName     string
 
 	logPreserved bool
+
+	// Set if someone calls FatalError, in which case we'll render a big
+	// ugly red error on the console instead of the usual status output.
+	fatalError error
 }
 
 type ConsoleService struct {
@@ -116,6 +120,12 @@ func OpenConsole(devPath string) (*Console, error) {
 func (c *Console) Refresh() {
 	c.writeMutex.Lock()
 	defer c.writeMutex.Unlock()
+
+	if c.fatalError != nil {
+		c.displayFatalError()
+		return
+	}
+
 	if c.BootStatusMessage != "" {
 		c.displayBootStatus()
 	} else {
@@ -126,8 +136,8 @@ func (c *Console) Refresh() {
 func (c *Console) Logf(format string, args ...interface{}) {
 	c.writeMutex.Lock()
 	defer c.writeMutex.Unlock()
-	if c.BootStatusMessage != "" {
-		// Can't show log lines while we're in the boot logo state.
+	if c.BootStatusMessage != "" || c.fatalError != nil {
+		// Can't show log lines while we're in the boot logo or error states.
 		return
 	}
 
@@ -143,6 +153,11 @@ func (c *Console) Logf(format string, args ...interface{}) {
 	// line at the end of the log area.
 	c.tty.Write([]byte{10})
 	fmt.Fprintf(c.tty, format, args...)
+}
+
+func (c *Console) FatalError(err error) {
+	c.fatalError = err
+	c.Refresh()
 }
 
 func (c *Console) displayBootStatus() {
@@ -254,6 +269,48 @@ func (c *Console) displayRuntimeStatus() {
 		// the status area.
 		c.tty.Write([]byte("\0338"))
 	}
+}
+
+func (c *Console) displayFatalError() {
+	// The fatal error box is designed to fit into the same space as the
+	// status pane at the top of the runtime status UI while still showing
+	// the log below, though it can also render over the top of the boot
+	// logo, which will look a little funny but we don't care too much.
+	c.tty.Write(
+		[]byte("\033[0;31m\033[1;0H"),
+	)
+
+	bigBlock := []byte("\u2588")
+	smallBlockTop := []byte("\u2580")
+	smallBlockBottom := []byte("\u2584")
+
+	c.tty.Write(bigBlock)
+	for i := 0; i < 78; i++ {
+		c.tty.Write(smallBlockTop)
+	}
+	c.tty.Write(bigBlock)
+
+	for y := 2; y < 5; y++ {
+		fmt.Fprintf(c.tty, "\033[%d;0H\033[K", y)
+		c.tty.Write(bigBlock)
+		fmt.Fprintf(c.tty, "\033[%d;80H", y)
+		c.tty.Write(bigBlock)
+	}
+
+	c.tty.Write([]byte("\033[5;0H"))
+	c.tty.Write(bigBlock)
+	for i := 0; i < 78; i++ {
+		c.tty.Write(smallBlockBottom)
+	}
+	c.tty.Write(bigBlock)
+
+	errMsg := c.fatalError.Error()
+	if len(errMsg) > 76 {
+		errMsg = errMsg[0:73] + "..."
+	}
+
+	fmt.Fprintf(c.tty, "\033[2;3HCritical System Error. See system log for more details.")
+	fmt.Fprintf(c.tty, "\033[4;3H%s", errMsg)
 }
 
 func (c *Console) clearAndReset() {
