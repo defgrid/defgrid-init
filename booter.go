@@ -38,7 +38,7 @@ func NewBooter(flavor string) *Booter {
 			resolverConfig:      &ResolverConfigurerNoOp{},
 		}
 
-		/*case "testhost":
+	case "testhost":
 		// "testhost" is another kind of dev environment, but used
 		// when we're running in a local qemu instance launched from
 		// within the defgrid-images repository. In this case we
@@ -49,12 +49,18 @@ func NewBooter(flavor string) *Booter {
 		// values for these which are designed to be "unique enough"
 		// for our test network.
 		return &Booter{
+			consoleDevPath:      "/dev/tty1",
+			logDevPath:          "/dev/hvc0", // virtio console
 			networkConfig:       &NetworkConfigurerDHCP{Interface: "eth0"},
 			earlyResolverConfig: &ResolverConfigurerResolvDirect{},
 			nodeConfigGetter:    &NodeConfigGetterTestNet{},
-			resolverConfig:      &ResolverConfigurerResolvWithConsul{},
+
+			// TODO: Once we've got consul running, write implementation
+			// that configures dnsmasq to forward .consul requests over
+			// to the DNS interface on the local consul agent.
+			resolverConfig: &ResolverConfigurerResolvDirect{},
+			///resolverConfig:      &ResolverConfigurerResolvWithConsul{},
 		}
-		*/
 	}
 
 	return nil
