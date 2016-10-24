@@ -1,6 +1,8 @@
 package main
 
 import (
+	"crypto/rand"
+	"crypto/rsa"
 	"fmt"
 	"io"
 	"os"
@@ -32,6 +34,7 @@ func NewBooter(flavor string) *Booter {
 		return &Booter{
 			consoleDevPath:      consoleDev,
 			logDevPath:          logDev,
+			randomConfig:        &RandomConfigurerNoOp{},
 			networkConfig:       &NetworkConfigurerLocalDev{},
 			earlyResolverConfig: &ResolverConfigurerNoOp{},
 			nodeConfigGetter:    &NodeConfigGetterLocalDev{},
@@ -51,6 +54,7 @@ func NewBooter(flavor string) *Booter {
 		return &Booter{
 			consoleDevPath:      "/dev/tty1",
 			logDevPath:          "/dev/hvc0", // virtio console
+			randomConfig:        &RandomConfigurerHaveged{},
 			networkConfig:       &NetworkConfigurerDHCP{Interface: "eth0"},
 			earlyResolverConfig: &ResolverConfigurerResolvDirect{},
 			nodeConfigGetter:    &NodeConfigGetterTestNet{},
@@ -69,6 +73,7 @@ func NewBooter(flavor string) *Booter {
 type Booter struct {
 	consoleDevPath      string
 	logDevPath          string
+	randomConfig        RandomConfigurer
 	networkConfig       NetworkConfigurer
 	earlyResolverConfig ResolverConfigurer
 	nodeConfigGetter    NodeConfigGetter
@@ -83,6 +88,18 @@ func (b *Booter) Console() (*Console, error) {
 
 func (b *Booter) LogWriter() (io.WriteCloser, error) {
 	return os.OpenFile(b.logDevPath, os.O_WRONLY|os.O_APPEND|os.O_CREATE, 0666)
+}
+
+func (b *Booter) ConfigurePRNG() error {
+	return b.randomConfig.ConfigurePRNG()
+}
+
+func (b *Booter) GenerateHostKey() (*rsa.PrivateKey, error) {
+	key, err := rsa.GenerateKey(rand.Reader, 4096)
+	if err == nil {
+		key.Precompute()
+	}
+	return key, err
 }
 
 func (b *Booter) ConfigureNetwork() (*NetworkConfig, error) {

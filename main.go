@@ -43,14 +43,24 @@ func main() {
 
 	log.SetOutput(io.MultiWriter(logWriter, console.LogWriter()))
 
-	if booter == nil {
-		panic("unsupported boot flavor!")
-	}
-
 	bootStatus := func(s string) {
 		log.Println(s)
 		console.BootStatusMessage = s
 		console.Refresh()
+	}
+
+	bootStatus("Configuring PRNG...")
+	err = booter.ConfigurePRNG()
+	if err != nil {
+		panic(err)
+	}
+
+	bootStatus("Generating host key...")
+	// Not used yet; will come later when we add SSH server and
+	// TLS-based services.
+	_, err = booter.GenerateHostKey()
+	if err != nil {
+		panic(err)
 	}
 
 	bootStatus("Configuring network...")
