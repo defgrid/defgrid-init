@@ -134,9 +134,9 @@ func handleClient(chans <-chan ssh.NewChannel, reqs <-chan *ssh.Request) {
 }
 
 func handleClientSession(channel ssh.Channel, reqs <-chan *ssh.Request) {
-	cmd := exec.Command("bash")
-	cmd.Args[0] = "-bash" // login shell
-	cmd.Dir = "/"         // should be user homedir, probably?
+	cmd := exec.Command("/bin/sh")
+	cmd.Args[0] = "-sh" // login shell
+	cmd.Dir = "/"       // should be user homedir, probably?
 
 	close := func() {
 		channel.Close()
