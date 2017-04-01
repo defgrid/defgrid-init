@@ -41,6 +41,37 @@ func NewBooter(flavor string) *Booter {
 			resolverConfig:      &ResolverConfigurerNoOp{},
 		}
 
+	case "devcontainer":
+		// "devcontainer" is similar to "dev" except that we expect to be
+		// launching in some sort of container, such as a Docker container.
+		// This means it is somewhat isolated from the host system but still
+		// isn't controlling a full machine and so ends up being a mixture
+		// of "dev" and "testhost" config.
+
+		// Environment variables can be used to customize how we
+		// fake various aspects of the system.
+		consoleDev := os.Getenv("DGI_DEV_CONSOLE")
+		if consoleDev == "" {
+			consoleDev = "/dev/null"
+		}
+
+		logDev := os.Getenv("DGI_DEV_LOG")
+		if logDev == "" {
+			logDev = "/dev/tty"
+		}
+
+		return &Booter{
+			consoleDevPath: consoleDev,
+			logDevPath:     logDev,
+			randomConfig:   &RandomConfigurerNoOp{},
+			networkConfig: &NetworkConfigurerLocalDev{
+				ForceInterface: "eth0", // assume docker container with preconfigured eth0
+			},
+			earlyResolverConfig: &ResolverConfigurerNoOp{},
+			nodeConfigGetter:    &NodeConfigGetterLocalDev{},
+			resolverConfig:      &ResolverConfigurerNoOp{},
+		}
+
 	case "testhost":
 		// "testhost" is another kind of dev environment, but used
 		// when we're running in a local qemu instance launched from

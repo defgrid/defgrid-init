@@ -1,0 +1,9 @@
+#!/bin/bash
+
+# Helper script to run defgrid-init inside a docker container.
+# This makes some assumptions:
+# - You have GOPATH explicitly set, not relying on the default of ~/go
+# - You have a docker custom network called "defgrid-init-dev"
+# - You already ran "go install ./" so that the defgrid-init is in $GOPATH/bin
+
+exec docker run --net=defgrid-init-dev -v "$GOPATH":"/go" -t ubuntu /go/bin/defgrid-init devcontainer
